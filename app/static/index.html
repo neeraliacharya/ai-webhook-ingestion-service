@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Webhook Ingestion Service</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --surface2:  #273549;
+      --border:    #334155;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --accent:    #3b82f6;
+      --accent-h:  #2563eb;
+      --green:     #10b981;
+      --yellow:    #f59e0b;
+      --orange:    #f97316;
+      --red:       #ef4444;
+      --purple:    #a855f7;
+      --gray:      #64748b;
+      --teal:      #14b8a6;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    header .logo {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    header .subtitle { font-size: 12px; color: var(--muted); margin-left: 4px; }
+    header .spacer { flex: 1; }
+    header .pill {
+      font-size: 11px; color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+    }
+    .live-dot {
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 0;
+      overflow: hidden;
+      height: calc(100vh - 56px);
+    }
+
+    /* ── Left panel ── */
+    .left-panel {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    /* Sample payload buttons */
+    .samples {
+      padding: 14px 16px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .samples label {
+      font-size: 11px;
+      color: var(--muted);
+      width: 100%;
+      margin-bottom: 2px;
+      font-weight: 500;
+    }
+    .sample-btn {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .sample-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .sample-btn.active { border-color: var(--accent); background: rgba(59,130,246,0.12); color: var(--accent); }
+
+    /* Payload textarea */
+    .payload-area {
+      flex: 1;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow: hidden;
+    }
+    textarea {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 12px;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--accent); }
+
+    /* Send button */
+    .send-btn {
+      height: 40px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .send-btn:hover { background: var(--accent-h); }
+    .send-btn:active { transform: scale(0.98); }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Response card */
+    #response-card {
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12px;
+      display: none;
+      gap: 8px;
+      flex-direction: column;
+      border: 1px solid var(--border);
+    }
+    #response-card.accepted {
+      display: flex;
+      background: rgba(16,185,129,0.08);
+      border-color: rgba(16,185,129,0.3);
+    }
+    #response-card.duplicate {
+      display: flex;
+      background: rgba(245,158,11,0.08);
+      border-color: rgba(245,158,11,0.3);
+    }
+    #response-card.error {
+      display: flex;
+      background: rgba(239,68,68,0.08);
+      border-color: rgba(239,68,68,0.3);
+    }
+    .response-title {
+      font-weight: 700;
+      font-size: 13px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .response-title.accepted { color: var(--green); }
+    .response-title.duplicate { color: var(--yellow); }
+    .response-title.error { color: var(--red); }
+    .response-id {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .response-id span { color: var(--text); }
+
+    /* ── Right panel ── */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0 20px;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .tab {
+      padding: 14px 16px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab .count {
+      font-size: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1px 6px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .tab.active .count { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3); color: var(--accent); }
+
+    /* Tab content */
+    .tab-content { display: none; flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .tab-content.active { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Empty state */
+    .empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      gap: 8px;
+      padding: 40px;
+    }
+    .empty .icon { font-size: 32px; }
+    .empty .msg { font-size: 13px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 13px;
+      font-family: monospace;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .meta-item {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .meta-item span { color: var(--text); }
+
+    /* Badges */
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .badge-PICKED_UP    { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .badge-IN_TRANSIT   { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .badge-OUT_FOR_DELIVERY { background: rgba(249,115,22,0.15); color: var(--orange); }
+    .badge-DELIVERED    { background: rgba(16,185,129,0.15); color: var(--green); }
+    .badge-ISSUED       { background: rgba(168,85,247,0.15); color: var(--purple); }
+    .badge-PAID         { background: rgba(16,185,129,0.15); color: var(--green); }
+    .badge-VOIDED       { background: rgba(100,116,139,0.15); color: var(--gray); }
+    .badge-REFUNDED     { background: rgba(239,68,68,0.15); color: var(--red); }
+    .badge-unclassified { background: rgba(100,116,139,0.15); color: var(--gray); }
+    .badge-shipment     { background: rgba(59,130,246,0.12); color: var(--accent); }
+    .badge-invoice      { background: rgba(168,85,247,0.12); color: var(--purple); }
+    .badge-pending-type { background: rgba(100,116,139,0.12); color: var(--gray); }
+
+    .proc-done    { font-size: 10px; color: var(--green); font-weight: 600; }
+    .proc-pending { font-size: 10px; color: var(--yellow); font-weight: 600; }
+    .proc-failed  { font-size: 10px; color: var(--red); font-weight: 600; }
+
+    .divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+    /* Refresh bar */
+    .refresh-bar {
+      padding: 8px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .refresh-bar .last-updated { margin-left: auto; }
+
+    /* Spinner */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .spinner.active { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Batch UI ── */
+    .file-upload-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .file-btn {
+      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px dashed var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .file-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .file-hint { font-size: 11px; color: var(--gray); }
+
+    .batch-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      background: rgba(59,130,246,0.07);
+      border-bottom: 1px solid rgba(59,130,246,0.2);
+      font-size: 12px;
+    }
+    .batch-bar.active { display: flex; }
+    .batch-icon { font-size: 16px; }
+    .batch-count { font-weight: 700; color: var(--accent); }
+    .batch-types { color: var(--muted); flex: 1; }
+    .clear-batch {
+      font-size: 12px; color: var(--muted); background: none;
+      border: none; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+    }
+    .clear-batch:hover { color: var(--red); }
+
+    /* Drag-over state on textarea */
+    .drop-active { border-color: var(--accent) !important; background: rgba(59,130,246,0.05) !important; }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .progress-wrap.active { display: flex; }
+    .progress-track {
+      height: 6px;
+      background: var(--surface2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-text { font-size: 11px; color: var(--muted); text-align: center; }
+
+    /* Batch result summary */
+    .batch-summary {
+      display: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      gap: 6px;
+      flex-direction: column;
+      font-size: 12px;
+    }
+    .batch-summary.active { display: flex; }
+    .summary-row { display: flex; align-items: center; gap: 16px; }
+    .s-accepted { color: var(--green); font-weight: 700; }
+    .s-duplicate { color: var(--yellow); font-weight: 700; }
+    .s-error     { color: var(--red);   font-weight: 700; }
+
+    /* Possible-category badges for unclassified */
+    .cat-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      border: 1px solid;
+    }
+    .cat-port      { background: rgba(20,184,166,0.12); color: var(--teal);   border-color: rgba(20,184,166,0.3); }
+    .cat-weather   { background: rgba(245,158,11,0.12); color: var(--yellow); border-color: rgba(245,158,11,0.3); }
+    .cat-regulatory{ background: rgba(168,85,247,0.12); color: var(--purple); border-color: rgba(168,85,247,0.3); }
+    .cat-carrier   { background: rgba(59,130,246,0.12); color: var(--accent); border-color: rgba(59,130,246,0.3); }
+    .cat-customs   { background: rgba(249,115,22,0.12); color: var(--orange); border-color: rgba(249,115,22,0.3); }
+    .cat-system    { background: rgba(100,116,139,0.12);color: var(--gray);   border-color: rgba(100,116,139,0.3); }
+    .cat-default   { background: rgba(100,116,139,0.12);color: var(--gray);   border-color: rgba(100,116,139,0.3); }
+
+    .unclassified-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡</div>
+  <h1>AI Webhook Ingestion</h1>
+  <span class="subtitle">/ supply chain normalizer</span>
+  <div class="spacer"></div>
+  <div class="pill"><span class="live-dot"></span>Live</div>
+</header>
+
+<main>
+  <!-- ── LEFT: Webhook Sender ── -->
+  <div class="left-panel">
+    <div class="panel-header">Send Webhook Payload</div>
+
+    <div class="samples">
+      <label>Sample payloads</label>
+      <button class="sample-btn" onclick="loadSample('maersk_pickup')">🚢 Maersk PICKED_UP</button>
+      <button class="sample-btn" onclick="loadSample('maersk_transit')">🚢 Maersk IN_TRANSIT</button>
+      <button class="sample-btn" onclick="loadSample('one_delivered')">📦 ONE DELIVERED</button>
+      <button class="sample-btn" onclick="loadSample('gfp_issued')">🧾 GFP Invoice ISSUED</button>
+      <button class="sample-btn" onclick="loadSample('gfp_paid')">✅ GFP Invoice PAID</button>
+      <button class="sample-btn" onclick="loadSample('marine_advisory')">⚠️ Marine Advisory</button>
+    </div>
+
+    <!-- File upload row -->
+    <div class="file-upload-row">
+      <button class="file-btn" onclick="document.getElementById('file-input').click()">
+        📁 Load JSON File
+      </button>
+      <span class="file-hint">Single object or array for batch — drag & drop also works</span>
+      <input type="file" id="file-input" accept=".json,application/json" style="display:none" onchange="handleFileSelect(this)">
+    </div>
+
+    <!-- Batch banner (shown when array is loaded) -->
+    <div class="batch-bar" id="batch-bar">
+      <span class="batch-icon">📦</span>
+      <span class="batch-count" id="batch-count-label">0 payloads</span>
+      <span class="batch-types" id="batch-type-hint"></span>
+      <button class="clear-batch" onclick="clearBatch()" title="Clear batch">✕</button>
+    </div>
+
+    <div class="payload-area">
+      <textarea id="payload" spellcheck="false"
+        placeholder='Paste any vendor JSON payload here, click a sample above, or load a JSON file…'
+        ondragover="event.preventDefault(); this.classList.add('drop-active')"
+        ondragleave="this.classList.remove('drop-active')"
+        ondrop="handleDrop(event)">
+      </textarea>
+
+      <!-- Progress bar (batch mode) -->
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-text" id="progress-text">Processing…</div>
+      </div>
+
+      <!-- Single webhook response -->
+      <div id="response-card">
+        <div class="response-title" id="resp-title"></div>
+        <div class="response-id" id="resp-id"></div>
+        <div class="response-id" id="resp-msg"></div>
+      </div>
+
+      <!-- Batch result summary -->
+      <div class="batch-summary" id="batch-summary">
+        <div class="summary-row">
+          <span class="s-accepted" id="sum-accepted">✓ 0 accepted</span>
+          <span class="s-duplicate" id="sum-duplicate">⟳ 0 duplicate</span>
+          <span class="s-error" id="sum-error">✕ 0 errors</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted)" id="sum-detail"></div>
+      </div>
+
+      <button class="send-btn" id="send-btn" onclick="handleSend()">
+        <span id="btn-spinner" class="spinner"></span>
+        <span id="btn-text">Send Webhook</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: Live Dashboard ── -->
+  <div class="right-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('events')" id="tab-events">
+        Events <span class="count" id="count-events">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('shipments')" id="tab-shipments">
+        Shipments <span class="count" id="count-shipments">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('invoices')" id="tab-invoices">
+        Invoices <span class="count" id="count-invoices">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('unclassified')" id="tab-unclassified">
+        Unclassified <span class="count" id="count-unclassified">0</span>
+      </div>
+    </div>
+
+    <div class="tab-content active" id="content-events">
+      <div class="empty"><div class="icon">📭</div><div class="msg">No events yet — send a webhook to get started</div></div>
+    </div>
+    <div class="tab-content" id="content-shipments">
+      <div class="empty"><div class="icon">🚢</div><div class="msg">No shipments tracked yet</div></div>
+    </div>
+    <div class="tab-content" id="content-invoices">
+      <div class="empty"><div class="icon">🧾</div><div class="msg">No invoices tracked yet</div></div>
+    </div>
+    <div class="tab-content" id="content-unclassified">
+      <div class="empty"><div class="icon">🗂️</div><div class="msg">No unclassified events yet — try sending the Marine Advisory sample</div></div>
+    </div>
+
+    <div class="refresh-bar">
+      <div class="spinner active" id="refresh-spinner" style="display:none"></div>
+      Auto-refreshes every 3s
+      <span class="last-updated" id="last-updated">–</span>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let batchPayloads = null;   // null = single mode, array = batch mode
+
+// ── Sample payloads ──────────────────────────────────────────────────────────
+const SAMPLES = {
+  maersk_pickup: {
+    carrier_scac: "MAEU",
+    event_msg_id: "MAEU-EVT-2026-04-19-0042",
+    transport_doc: { type: "MBL", number: "MAEU240498712" },
+    container: "MSKU7748112",
+    milestone: "Empty container released to shipper; full container received at origin terminal",
+    milestone_at: "2026-04-19T11:15:00+08:00",
+    port: { code: "CNSHA", name: "Shanghai" },
+    shipper_ref: "ACME-IND-PO-2026-9921"
+  },
+  maersk_transit: {
+    carrier_scac: "MAEU",
+    event_msg_id: "MAEU-EVT-2026-04-22-0001",
+    transport_doc: { type: "MBL", number: "MAEU240498712" },
+    container: "MSKU7748112",
+    vessel: { name: "MAERSK GUATEMALA", imo: "9778120", voyage: "424W" },
+    milestone: "Loaded onboard and sailed",
+    milestone_at: "2026-04-21T22:47:00+08:00",
+    port: { code: "CNSHA", name: "Shanghai" }
+  },
+  one_delivered: {
+    carrier: "Ocean Network Express",
+    carrier_scac: "ONEY",
+    event_id: "ONE-2026-04-28-114",
+    house_bl: "ONEYJKTHKG2604113",
+    master_bl: "ONEYMBLHKG260499",
+    container_no: "TLLU2890442",
+    consignee: "ACME Manufacturing PT.",
+    milestone_text: "Cargo released to consignee at consignee facility — empty container returned to depot",
+    milestone_local_time: "28/04/2026 09:42 WIB",
+    port_of_discharge: "IDJKT",
+    delivery_order_no: "DO-IDJKT-26044881"
+  },
+  gfp_issued: {
+    source: "globalfreightpay.api",
+    channel: "carrier_billing",
+    doc_ref: "GFP-INV-2026-Q2-08821",
+    carrier: "Hapag-Lloyd AG",
+    linked_bl: "HLCU2604OCEAN221",
+    transaction: {
+      kind: "freight invoice raised",
+      issued_at: "2026-04-15T09:00:00+02:00",
+      amount: "EUR 24.350,75",
+      due_at: "2026-05-15T00:00:00+02:00",
+      line_items: [
+        { desc: "Ocean freight Shanghai → Hamburg", amt: "EUR 21.000,00" },
+        { desc: "Terminal handling charges (THC)", amt: "EUR 1.850,75" },
+        { desc: "Bunker adjustment factor (BAF)", amt: "EUR 1.500,00" }
+      ]
+    }
+  },
+  gfp_paid: {
+    source: "globalfreightpay.api",
+    channel: "carrier_billing",
+    doc_ref: "GFP-INV-2026-Q2-08821",
+    carrier: "Hapag-Lloyd AG",
+    linked_bl: "HLCU2604OCEAN221",
+    transaction: {
+      kind: "settled in full",
+      settled_at: "2026-04-22 18:47:11+02:00",
+      amount: "EUR 24.350,75",
+      remitter: "ACME Logistics GmbH",
+      memo: "Ocean freight + THC + BAF, Shanghai → Hamburg, container HLBU4490221"
+    }
+  },
+  marine_advisory: {
+    issuer: "marine-traffic-advisory",
+    advisory_id: "MTA-2026-04-26-EU-007",
+    severity: "AMBER",
+    issued_at: "2026-04-26T06:00:00Z",
+    subject: "Ongoing congestion at Port of Antwerp-Bruges",
+    body: "Vessel waiting times at Antwerp-Bruges berths have increased to 4-6 days due to labour action by terminal operators.",
+    affected_services: ["AE7", "FAL3", "Mediterranean Bridge"],
+    expires_at: "2026-05-03T00:00:00Z"
+  }
+};
+
+let activeSample = null;
+
+function loadSample(key) {
+  document.querySelectorAll('.sample-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  activeSample = key;
+  clearBatch();
+  document.getElementById('payload').value = JSON.stringify(SAMPLES[key], null, 2);
+  hideResponse();
+}
+
+// ── File loading ──────────────────────────────────────────────────────────────
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  readFile(file);
+  input.value = '';  // allow re-selecting same file
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('payload').classList.remove('drop-active');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+    alert('Please drop a .json file');
+    return;
+  }
+  readFile(file);
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    let parsed;
+    try { parsed = JSON.parse(e.target.result); }
+    catch { alert('Invalid JSON file — could not parse.'); return; }
+
+    if (Array.isArray(parsed)) {
+      // Batch mode
+      batchPayloads = parsed;
+      document.getElementById('payload').value = JSON.stringify(parsed, null, 2);
+      document.getElementById('batch-count-label').textContent = `${parsed.length} payload${parsed.length !== 1 ? 's' : ''}`;
+      document.getElementById('batch-type-hint').textContent = `from ${file.name}`;
+      document.getElementById('batch-bar').classList.add('active');
+      document.getElementById('send-btn').querySelector('#btn-text').textContent = `Send Batch (${parsed.length})`;
+      hideResponse();
+      hideBatchSummary();
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      // Single payload
+      clearBatch();
+      document.getElementById('payload').value = JSON.stringify(parsed, null, 2);
+      hideResponse();
+    } else {
+      alert('JSON file must contain an object {} or an array of objects [...]');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function clearBatch() {
+  batchPayloads = null;
+  document.getElementById('batch-bar').classList.remove('active');
+  document.getElementById('send-btn').querySelector('#btn-text').textContent = 'Send Webhook';
+  hideBatchSummary();
+  hideProgress();
+}
+
+function hideProgress() {
+  document.getElementById('progress-wrap').classList.remove('active');
+}
+
+function hideBatchSummary() {
+  document.getElementById('batch-summary').classList.remove('active');
+}
+
+// ── Send dispatcher ───────────────────────────────────────────────────────────
+function handleSend() {
+  if (batchPayloads !== null) {
+    sendBatch();
+  } else {
+    sendSingle();
+  }
+}
+
+// ── Send single webhook ───────────────────────────────────────────────────────
+async function sendSingle() {
+  const raw = document.getElementById('payload').value.trim();
+  if (!raw) return;
+
+  let body;
+  try { body = JSON.parse(raw); }
+  catch { showResponse('error', '✕ Invalid JSON', '', 'Fix the JSON syntax and try again.'); return; }
+
+  if (Array.isArray(body)) {
+    // User pasted an array manually — treat as batch
+    batchPayloads = body;
+    document.getElementById('batch-count-label').textContent = `${body.length} payloads`;
+    document.getElementById('batch-type-hint').textContent = 'from textarea';
+    document.getElementById('batch-bar').classList.add('active');
+    document.getElementById('send-btn').querySelector('#btn-text').textContent = `Send Batch (${body.length})`;
+    sendBatch();
+    return;
+  }
+
+  setBtnLoading(true, 'Sending…');
+  hideResponse();
+  hideBatchSummary();
+
+  try {
+    const res = await fetch('/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.status === 'accepted') {
+      showResponse('accepted', '✓ Accepted', `event_id: ${data.event_id}`, 'Normalization running in background…');
+    } else if (data.status === 'duplicate') {
+      showResponse('duplicate', '⟳ Duplicate', `event_id: ${data.event_id}`, 'Identical payload already processed — idempotent.');
+    } else {
+      showResponse('error', '✕ Error', '', data.detail || 'Unknown error');
+    }
+    await refreshAll();
+  } catch(e) {
+    showResponse('error', '✕ Network error', '', e.message);
+  } finally {
+    setBtnLoading(false, 'Send Webhook');
+  }
+}
+
+// ── Send batch ────────────────────────────────────────────────────────────────
+async function sendBatch() {
+  if (!batchPayloads || !batchPayloads.length) return;
+
+  const total = batchPayloads.length;
+  hideResponse();
+  hideBatchSummary();
+  setBtnLoading(true, `Sending ${total} payloads…`);
+
+  // Show progress bar
+  const pw = document.getElementById('progress-wrap');
+  const pf = document.getElementById('progress-fill');
+  const pt = document.getElementById('progress-text');
+  pw.classList.add('active');
+  pf.style.width = '10%';
+  pt.textContent = `Sending ${total} payloads to /webhooks/batch…`;
+
+  try {
+    const res = await fetch('/webhooks/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(batchPayloads),
+    });
+    const data = await res.json();
+
+    pf.style.width = '100%';
+    pt.textContent = `Done — ${data.accepted} queued for normalization`;
+
+    // Show summary
+    document.getElementById('sum-accepted').textContent = `✓ ${data.accepted} accepted`;
+    document.getElementById('sum-duplicate').textContent = `⟳ ${data.duplicates} duplicate`;
+    document.getElementById('sum-error').textContent = `✕ ${data.errors} errors`;
+    document.getElementById('sum-detail').textContent =
+      `${data.total} total payloads · normalization running in background`;
+    document.getElementById('batch-summary').classList.add('active');
+
+    setTimeout(() => pw.classList.remove('active'), 1500);
+    await refreshAll();
+  } catch(e) {
+    pf.style.width = '100%';
+    pf.style.background = 'var(--red)';
+    pt.textContent = `Network error: ${e.message}`;
+  } finally {
+    setBtnLoading(false, `Send Batch (${total})`);
+  }
+}
+
+function setBtnLoading(loading, text) {
+  const btn = document.getElementById('send-btn');
+  const spinner = document.getElementById('btn-spinner');
+  btn.disabled = loading;
+  spinner.style.display = loading ? 'inline-block' : 'none';
+  document.getElementById('btn-text').textContent = text;
+}
+
+function showResponse(type, title, id, msg) {
+  const card = document.getElementById('response-card');
+  card.className = type;
+  document.getElementById('resp-title').className = `response-title ${type}`;
+  document.getElementById('resp-title').textContent = title;
+  document.getElementById('resp-id').innerHTML = id ? `<span>${id}</span>` : '';
+  document.getElementById('resp-msg').textContent = msg;
+}
+function hideResponse() {
+  document.getElementById('response-card').className = '';
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  document.getElementById(`content-${name}`).classList.add('active');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function badge(cls, text) {
+  return `<span class="badge badge-${cls}">${text}</span>`;
+}
+function procBadge(status) {
+  if (status === 'done')    return `<span class="proc-done">● done</span>`;
+  if (status === 'failed')  return `<span class="proc-failed">● failed</span>`;
+  return `<span class="proc-pending">◌ processing…</span>`;
+}
+function timeAgo(iso) {
+  if (!iso) return '–';
+  const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (diff < 5)   return 'just now';
+  if (diff < 60)  return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  return new Date(iso).toLocaleTimeString();
+}
+function fmtDate(iso) {
+  if (!iso) return '–';
+  return new Date(iso).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── Render events ─────────────────────────────────────────────────────────────
+function renderEvents(events) {
+  const el = document.getElementById('content-events');
+  document.getElementById('count-events').textContent = events.length;
+  if (!events.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div><div class="msg">No events yet — send a webhook to get started</div></div>';
+    return;
+  }
+  el.innerHTML = events.map(e => {
+    const typeBadge = e.event_type === 'pending'
+      ? badge('pending-type', 'PENDING')
+      : badge(e.event_type, e.event_type.toUpperCase());
+    const statusBadge = e.status ? badge(e.status, e.status) : '';
+    return `
+      <div class="card">
+        <div class="card-row">
+          <div class="card-title">
+            ${typeBadge}
+            ${statusBadge}
+            <span style="font-size:11px;color:var(--muted);font-family:monospace">${e.entity_id || '—'}</span>
+          </div>
+          ${procBadge(e.processing_status)}
+        </div>
+        <div class="card-meta">
+          <div class="meta-item">🕐 received <span>${timeAgo(e.received_at)}</span></div>
+          ${e.occurred_at ? `<div class="meta-item">⚡ occurred <span>${fmtDate(e.occurred_at)}</span></div>` : ''}
+          <div class="meta-item">🔑 <span style="font-family:monospace;font-size:10px">${e.id.split('-')[0]}…</span></div>
+        </div>
+        ${e.error_message ? `<div style="font-size:11px;color:var(--red);background:rgba(239,68,68,0.08);border-radius:5px;padding:6px 8px">${e.error_message}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ── Render shipments ──────────────────────────────────────────────────────────
+function renderShipments(shipments) {
+  const el = document.getElementById('content-shipments');
+  document.getElementById('count-shipments').textContent = shipments.length;
+  if (!shipments.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">🚢</div><div class="msg">No shipments tracked yet</div></div>';
+    return;
+  }
+  el.innerHTML = shipments.map(s => `
+    <div class="card">
+      <div class="card-row">
+        <div class="card-title">
+          ${badge(s.current_status, s.current_status)}
+          ${s.entity_id}
+        </div>
+        <span style="font-size:11px;color:var(--muted)">${timeAgo(s.updated_at)}</span>
+      </div>
+      <div class="card-meta">
+        ${s.carrier    ? `<div class="meta-item">🏢 <span>${s.carrier}</span></div>` : ''}
+        ${s.container_id ? `<div class="meta-item">📦 <span>${s.container_id}</span></div>` : ''}
+        ${s.origin_port && s.destination_port ? `<div class="meta-item">📍 <span>${s.origin_port} → ${s.destination_port}</span></div>` : ''}
+        ${s.vessel     ? `<div class="meta-item">🚢 <span>${s.vessel}</span></div>` : ''}
+        ${s.consignee  ? `<div class="meta-item">👤 <span>${s.consignee}</span></div>` : ''}
+        ${s.status_occurred_at ? `<div class="meta-item">⚡ <span>${fmtDate(s.status_occurred_at)}</span></div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Render invoices ───────────────────────────────────────────────────────────
+function renderInvoices(invoices) {
+  const el = document.getElementById('content-invoices');
+  document.getElementById('count-invoices').textContent = invoices.length;
+  if (!invoices.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">🧾</div><div class="msg">No invoices tracked yet</div></div>';
+    return;
+  }
+  el.innerHTML = invoices.map(i => `
+    <div class="card">
+      <div class="card-row">
+        <div class="card-title">
+          ${badge(i.current_status, i.current_status)}
+          ${i.entity_id}
+        </div>
+        <span style="font-size:11px;color:var(--muted)">${timeAgo(i.updated_at)}</span>
+      </div>
+      <div class="card-meta">
+        ${i.carrier   ? `<div class="meta-item">🏢 <span>${i.carrier}</span></div>` : ''}
+        ${i.amount != null ? `<div class="meta-item">💰 <span>${i.currency || ''} ${Number(i.amount).toLocaleString(undefined, {minimumFractionDigits:2})}</span></div>` : ''}
+        ${i.related_bl ? `<div class="meta-item">📄 BL <span>${i.related_bl}</span></div>` : ''}
+        ${i.remitter  ? `<div class="meta-item">👤 <span>${i.remitter}</span></div>` : ''}
+        ${i.due_at    ? `<div class="meta-item">📅 due <span>${fmtDate(i.due_at)}</span></div>` : ''}
+        ${i.status_occurred_at ? `<div class="meta-item">⚡ <span>${fmtDate(i.status_occurred_at)}</span></div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Render unclassified ───────────────────────────────────────────────────────
+function categoryClass(cat) {
+  if (!cat) return 'cat-default';
+  const c = cat.toLowerCase();
+  if (c.includes('port') || c.includes('congestion') || c.includes('berth')) return 'cat-port';
+  if (c.includes('weather') || c.includes('storm') || c.includes('cyclone')) return 'cat-weather';
+  if (c.includes('regulat') || c.includes('compliance') || c.includes('customs')) return 'cat-regulatory';
+  if (c.includes('carrier') || c.includes('announcement') || c.includes('notice')) return 'cat-carrier';
+  if (c.includes('customs') || c.includes('hold') || c.includes('detention')) return 'cat-customs';
+  if (c.includes('system') || c.includes('maintenance') || c.includes('alert')) return 'cat-system';
+  return 'cat-default';
+}
+
+function renderUnclassified(items) {
+  const el = document.getElementById('content-unclassified');
+  document.getElementById('count-unclassified').textContent = items.length;
+  if (!items.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">🗂️</div><div class="msg">No unclassified events yet — try sending the Marine Advisory sample</div></div>';
+    return;
+  }
+  el.innerHTML = items.map(u => {
+    const cat = u.possible_category || 'unknown';
+    const catCls = categoryClass(cat);
+    const title = u.title || u.vendor_event_id || 'Unnamed event';
+    const notes = u.notes || '';
+    return `
+      <div class="card">
+        <div class="card-row">
+          <div class="card-title" style="font-family:inherit;font-size:13px">
+            <span class="cat-badge ${catCls}">${cat}</span>
+            ${title}
+          </div>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">${timeAgo(u.received_at)}</span>
+        </div>
+        ${notes ? `<div class="unclassified-label">${notes}</div>` : ''}
+        <div class="card-meta">
+          ${u.occurred_at ? `<div class="meta-item">⚡ occurred <span>${fmtDate(u.occurred_at)}</span></div>` : ''}
+          ${u.vendor_event_id ? `<div class="meta-item">🔑 <span style="font-family:monospace;font-size:11px">${u.vendor_event_id}</span></div>` : ''}
+          ${procBadge(u.processing_status)}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Polling ───────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  document.getElementById('refresh-spinner').style.display = 'inline-block';
+  try {
+    const [events, shipments, invoices, unclassified] = await Promise.all([
+      fetch('/events').then(r => r.json()),
+      fetch('/shipments').then(r => r.json()),
+      fetch('/invoices').then(r => r.json()),
+      fetch('/unclassified').then(r => r.json()),
+    ]);
+    renderEvents(events);
+    renderShipments(shipments);
+    renderInvoices(invoices);
+    renderUnclassified(unclassified);
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.error('Refresh failed', e);
+  } finally {
+    document.getElementById('refresh-spinner').style.display = 'none';
+  }
+}
+
+// Keyboard shortcut: Cmd/Ctrl+Enter to send
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSend();
+});
+
+// Boot
+refreshAll();
+setInterval(refreshAll, 3000);
+</script>
+</body>
+</html>
